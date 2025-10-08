@@ -1,0 +1,163 @@
+ABAP Syntax Remediation Rules
+================================
+Rule 1 — Replace ALL SELECT SINGLE with SELECT ENDSELECT.
+---------------------------------------------------------
+What to do:
+- Change `SELECT SINGLE` to  `SELECT ..FROM...INTO.... UP TO 1 ROWS....WHERE` .
+
+
+Examples:
+Before:
+  SELECT SINGLE * FROM mara WHERE matnr = lv_matnr INTO wa_mara.
+After:
+  SELECT matnr meins mtart FROM mara
+         INTO  wa_mara
+         UP TO 1 ROWS
+         WHERE matnr = lv_matnr
+         order by matnr meins mtart.  " Added By PwcYYYY-MM-DD
+  ENDSELECT. " Added By PwcYYYY-MM-DD
+
+Before (anti-pattern):
+  SELECT SINGLE ZP_CUST  FROM ZPP_COST INTO wa_COST                  
+         WHERE ZP_CUST = lv_CUST.  
+After:
+  SELECT ZP_CUST FROM ZPP_COST
+         INTO  wa_COST
+         UP TO 1 ROWS
+         WHERE ZP_CUST = lv_CUST
+         order by zp_cust. " Added By PwcYYYY-MM-DD
+  ENDSELECT. " Added By PwcYYYY-MM-DD
+
+
+Rule 2 — Do not declare AFLE amount variables as TYPE p LENGTH 23 DECIMALS 2
+----------------------------------------------------------------------------
+
+What to do:
+- For AFLE amount fields, do not use TYPE p LENGTH 23 DECIMALS 2 (invalid: P length max is 16).
+- Use the DDIC amount element (e.g., DMBTR) always for AFLE amount variables.
+
+Why:
+- ABAP TYPE p length is bytes (1..16), not digits. LENGTH 23 is invalid.
+- Using DDIC amount types (e.g., DMBTR) aligns with AFLE-compliant precision/scale and DB mappings.
+
+Examples:
+Before (wrong):
+  DATA lv_amount TYPE p LENGTH 23 DECIMALS 2.   " WRONG: P length > 16 bytes
+After (correct):
+  DATA lv_amount TYPE dmbtr.                    " Added By PwcYYYY-MM-DD
+
+
+Rule 3 — Comma-separated field lists: escape INTO/WHERE with @, ORDER BY uses commas
+-----------------------------------------------------------------------------------
+Examples:
+Before:
+  SELECT *
+         INTO TABLE lt_data
+         WHERE matnr IN s_matnr
+         ORDER BY ersda DESC.
+
+After (wrong):
+  SELECT matnr, meins, mtart FROM mara
+         INTO TABLE lt_data
+         WHERE matnr IN s_matnr
+         ORDER BY ersda mtart DESC.  " Added By PwcYYYY-MM-DD
+
+After (correct):
+  SELECT matnr, meins, mtart FROM mara
+         INTO TABLE @lt_data
+         WHERE matnr IN @s_matnr
+         ORDER BY ersda, mtart DESC.  " Added By PwcYYYY-MM-DD
+
+Rule 4 — Do not use DESCRIBE FIELD/TABLE/LINES; use strlen( ) function instead.
+-----------------------------------------------------------------------------------
+What to do:
+-Replace any use of DESCRIBE FIELD ... LENGTH, DESCRIBE TABLE ... LINES, or other DESCRIBE statements that attempt to determine the length of a string or the number of entries, with safer and more dynamic alternatives.
+-For string length, use the standard ABAP function strlen( ) to determine the actual runtime length.
+-For table lines, use the built-in function lines( ).
+
+Examples:
+Before (Detecting String Length):
+  DESCRIBE FIELD lv_matnr LENGTH lv_len.
+    IF lv_len = 18.
+      " ... some logic ...
+    ENDIF.
+
+After (Correct Usage with strlen):
+	IF strlen( lv_matnr ) = 18.
+    " ... some logic ...
+  ENDIF.   " Added By PwcYYYY-MM-DD
+
+Before (Counting Internal Table Lines):
+  DESCRIBE TABLE lt_matnr LINES lv_lines.
+  IF lv_lines > 0.
+    " ... some logic ...
+  ENDIF.
+
+After (Correct Usage with lines( )):
+  IF lines( lt_matnr ) > 0.
+    " ... some logic ...
+  ENDIF.   " Added By PwcYYYY-MM-DD
+
+
+Rule 5 — Do not use offset/length notation (e.g. wa-matnr+2(3)); use substring( ) function instead.
+--------------------------------------------------------------------------------------------------
+
+What to do:
+
+-Replace any use of the classic ABAP offset/length substring notation (variable+offset(length)) with the modern string function substring( ), which improves code readability, maintainability, and runtime safety.
+-Declare suitable CHAR variables to receive the substring values before comparing or using them in logic.
+
+Examples:
+
+Before (Direct Offset/Length Comparison):
+" here in 2(3) -> first 2 is the starting position (offset)
+"              -> (3) is the number of characters to read (length)
+IF wa-matnr+2(3) NE wa-ummat+4(3).
+  " ... some logic ...
+ENDIF.
+
+After (Correct Usage with substring):
+DATA : lv_wa_matnr TYPE char3.    " Added By PwcYYYY-MM-DD
+DATA : lv_wa_ummat TYPE char3.    " Added By PwcYYYY-MM-DD
+
+lv_wa_matnr = substring( val = wa_matnr off = 2 len = 3 ).   " Added By PwcYYYY-MM-DD
+lv_wa_ummat = substring( val = wa_ummat off = 4 len = 3 ).   " Added By PwcYYYY-MM-DD
+
+IF lv_wa_matnr NE lv_wa_ummat.     " Added By PwcYYYY-MM-DD
+  " ... some logic ...
+ENDIF.
+
+Before (Offset/Length in SELECT WHERE Clause):
+" here in 2(5) -> first 2 is the starting position (offset)
+"              -> (5) is number of characters to read (length)
+SELECT matnr ummat
+  FROM mara INTO TABLE lt_mara
+  WHERE ummat = ls_mara-ummat+2(5).
+
+After (Correct Usage with substring):
+DATA : lv_ls_ummat TYPE char5.       " Added By PwcYYYY-MM-DD
+lv_ls_ummat = substring( val = ls_mara-ummat off = 2 len = 5 ).  " Added By PwcYYYY-MM-DD
+
+SELECT matnr ummat
+  FROM mara INTO TABLE lt_mara
+  WHERE ummat = lv_ls_ummat.         " Added By PwcYYYY-MM-DD
+
+Rule 6 — Do Not Use CONCATENATE for Simple String Assembly; Use String Templates Instead.
+-----------------------------------------------------------------------------------
+What to do:
+-Replace any use of the CONCATENATE statement for string assembly with ABAP string templates (|...|) and string expressions.
+-String templates provide clearer syntax, better readability, and reduce the risk of errors with separators.
+
+Examples:
+-Before (Using CONCATENATE Statement):
+  CONCATENATE 'Material Type' wa_mat-mtype 'material code' wa_matnr-mcode ' Material Number' wa_matnr-matnr INTO lv_msg SEPARATED BY space.
+
+-After (Correct Usage with String Template):
+  lv_msg = |{ 'Material Type' && wa_mat-mtype && 'material code' && wa_matnr-mcode && ' Material Number' && wa_matnr-matnr }|.  " Added By PwcYYYY-MM-DD
+
+Examples:
+-Before (Using CONCATENATE to Join Fields with Hyphen):
+  CONCATENATE wa_header-docnum wa_header-bukrs wa_header-gjahr INTO lv_key SEPARATED BY '-'.
+
+-After (Correct Usage with String Template):
+  lv_key = |{ wa_header-docnum }-{ wa_header-bukrs }-{ wa_header-gjahr }|.  " Added By PwcYYYY-MM-DD  
